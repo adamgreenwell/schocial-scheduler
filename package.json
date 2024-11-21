@@ -1,22 +1,117 @@
 {
   "name": "schocial-scheduler",
   "version": "1.0.0",
+  "description": "Schedule WordPress posts to social media platforms",
+  "author": {
+    "name": "Adam Greenwell",
+    "email": "adamgreenwell@gmail.com",
+    "url": "https://adamgreenwell.com"
+  },
+  "license": "GPL-2.0-or-later",
+  "keywords": [
+    "wordpress",
+    "social media",
+    "scheduler",
+    "facebook",
+    "twitter",
+    "linkedin",
+    "instagram"
+  ],
+  "homepage": "https://github.com/adamgreenwell/schocial-scheduler",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/adamgreenwell/schocial-scheduler.git"
+  },
+  "bugs": {
+    "url": "https://github.com/adamgreenwell/schocial-scheduler/issues"
+  },
+  "private": true,
+  "lint-staged": {
+    "*.{js,jsx}": [
+      "wp-scripts lint-js",
+      "wp-scripts format"
+    ],
+    "*.php": [
+      "composer run-script lint"
+    ],
+    "*.{css,scss}": [
+      "wp-scripts lint-style"
+    ],
+    "*.md": [
+      "wp-scripts lint-md-docs"
+    ],
+    "package.json": [
+      "wp-scripts lint-pkg-json"
+    ]
+  },
+  "engines": {
+    "node": ">=16",
+    "npm": ">=7"
+  },
+  "dependencies": {
+    "@wordpress/api-fetch": "^6.0.0",
+    "@wordpress/components": "^23.0.0",
+    "@wordpress/compose": "^6.0.0",
+    "@wordpress/data": "^9.0.0",
+    "@wordpress/date": "^4.0.0",
+    "@wordpress/element": "^5.0.0",
+    "@wordpress/hooks": "^3.0.0",
+    "@wordpress/i18n": "^4.0.0",
+    "@wordpress/icons": "^9.0.0",
+    "@wordpress/plugins": "^6.0.0",
+    "classnames": "^2.3.2",
+    "date-fns": "^2.30.0",
+    "lodash": "^4.17.21"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^9.0.0",
+    "@testing-library/jest-dom": "^5.16.5",
+    "@testing-library/react": "^13.4.0",
+    "@testing-library/user-event": "^14.4.3",
+    "@wordpress/babel-preset-default": "^7.0.0",
+    "@wordpress/dependency-extraction-webpack-plugin": "^4.0.0",
+    "@wordpress/e2e-test-utils": "^9.0.0",
+    "@wordpress/env": "^5.0.0",
+    "@wordpress/jest-preset-default": "^10.0.0",
+    "@wordpress/scripts": "^26.0.0",
+    "archiver": "^5.3.1",
+    "babel-jest": "^29.3.1",
+    "cross-env": "^7.0.3",
+    "fs-extra": "^11.1.1",
+    "husky": "^8.0.3",
+    "jest": "^29.3.1",
+    "jest-environment-jsdom": "^29.3.1",
+    "lint-staged": "^13.2.3",
+    "msw": "^1.2.2",
+    "prettier": "^2.8.8",
+    "react-test-renderer": "^18.2.0",
+    "webpack": "^5.88.2",
+    "webpack-cli": "^5.1.4"
+  },
   "scripts": {
     "build": "wp-scripts build",
     "start": "wp-scripts start",
-    "lint:js": "wp-scripts lint-js",
+    "check-engines": "wp-scripts check-engines",
+    "check-licenses": "wp-scripts check-licenses",
+    "format": "wp-scripts format",
     "lint:css": "wp-scripts lint-style",
+    "lint:js": "wp-scripts lint-js",
+    "lint:md:docs": "wp-scripts lint-md-docs",
+    "lint:pkg-json": "wp-scripts lint-pkg-json",
     "lint:php": "composer lint",
-    "test:js": "wp-scripts test-unit-js",
+    "lint": "npm run lint:js && npm run lint:css && npm run lint:pkg-json",
+    "lint-staged": "lint-staged",
+    "test": "npm run test:js && npm run test:php",
+    "test:js": "wp-scripts test-unit-js --coverage",
     "test:php": "composer test",
+    "test:watch": "wp-scripts test-unit-js --watch",
+    "test:update": "wp-scripts test-unit-js --updateSnapshot",
+    "packages-update": "wp-scripts packages-update",
     "make-pot": "wp i18n make-pot . languages/schocial-scheduler.pot",
     "prepare": "husky install",
     "dist": "node scripts/build-dist.js"
   },
-  "devDependencies": {
-    "@wordpress/scripts": "^26.0.0",
-    "@wordpress/i18n": "^4.0.0",
-    "husky": "^8.0.0",
-    "lint-staged": "^13.0.0"
-  }
+  "browserslist": [
+    "extends @wordpress/browserslist-config"
+  ]
 }
