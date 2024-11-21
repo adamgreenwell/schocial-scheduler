@@ -1,8 +1,26 @@
+# Dependencies
 /node_modules
 /vendor
+
+# Build outputs
 /build
-.DS_Store
-*.log
+/dist
+
+# Environment
 .env
 .env.*
 !.env.example
+
+# Editor files
+.idea/
+.vscode/
+*.sublime-workspace
+*.sublime-project
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test coverage
+/coverage
+.phpunit.result.cache
