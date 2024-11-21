@@ -1,0 +1,19 @@
+{
+  "name": "adamgreenwell/schocial-scheduler",
+  "description": "Schedule WordPress posts to social media platforms",
+  "type": "wordpress-plugin",
+  "license": "GPL-2.0-or-later",
+  "require": {
+    "php": ">=7.4"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^9.0",
+    "wp-coding-standards/wpcs": "^2.3",
+    "dealerdirect/phpcodesniffer-composer-installer": "^0.7.0"
+  },
+  "scripts": {
+    "test": "phpunit",
+    "lint": "phpcs",
+    "fix": "phpcbf"
+  }
+}

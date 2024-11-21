@@ -1,0 +1,22 @@
+{
+  "name": "schocial-scheduler",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "wp-scripts build",
+    "start": "wp-scripts start",
+    "lint:js": "wp-scripts lint-js",
+    "lint:css": "wp-scripts lint-style",
+    "lint:php": "composer lint",
+    "test:js": "wp-scripts test-unit-js",
+    "test:php": "composer test",
+    "make-pot": "wp i18n make-pot . languages/schocial-scheduler.pot",
+    "prepare": "husky install",
+    "dist": "node scripts/build-dist.js"
+  },
+  "devDependencies": {
+    "@wordpress/scripts": "^26.0.0",
+    "@wordpress/i18n": "^4.0.0",
+    "husky": "^8.0.0",
+    "lint-staged": "^13.0.0"
+  }
+}
