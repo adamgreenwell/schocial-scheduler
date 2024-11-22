@@ -1,12 +1,12 @@
-import { render } from '@wordpress/element';
+import { createRoot } from '@wordpress/element';
 import SettingsPage from './components/SettingsPage';
 
-console.log('Settings page initializing...');
+console.log( 'Settings page initializing...' );
 
-// Add error boundary
-const rootElement = document.getElementById('schocial-settings-root');
-if (rootElement) {
-    render(<SettingsPage />, rootElement);
+const rootElement = document.getElementById( 'schocial-settings-root' );
+if ( rootElement ) {
+	const root = createRoot( rootElement );
+	root.render( <SettingsPage /> );
 } else {
-    console.error('Could not find settings root element');
+	console.error( 'Could not find settings root element' );
 }
