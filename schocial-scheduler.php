@@ -256,12 +256,12 @@ class SchocialScheduler
     {
         register_rest_route(
             'schocial/v1',
-            '/test-post/(?P<platform>[a-zA-Z0-9-]+)/(?P<post_id>\d+)',
+            '/post-now/(?P<platform>[a-zA-Z0-9-]+)/(?P<post_id>\d+)',
             [
                 'methods' => 'POST',
-                'callback' => [$this, 'testSocialPost'],
+                'callback' => [$this, 'handlePostNow'],
                 'permission_callback' => function () {
-                    return current_user_can('manage_options');
+                    return current_user_can('edit_posts');
                 },
                 'args' => [
                     'platform' => [
@@ -477,7 +477,7 @@ class SchocialScheduler
      * @param int    $postId   The ID of the post to publish.
      * @param string $platform The social media platform to publish to.
      *
-     * @return void
+     * @return array|WP_Error Array on success, WP_Error on failure
      * @since  1.0.0
      *
      * @access public
@@ -485,23 +485,147 @@ class SchocialScheduler
     public function publishToSocial($postId, $platform)
     {
         $post = get_post($postId);
-        $message = $post->post_title . "\n\n" .
-            wp_trim_words($post->post_content, 30);
+        if (!$post) {
+            return new WP_Error(
+                'post_not_found',
+                __('Post not found', 'schocial-scheduler')
+            );
+        }
+
+        $settings = get_option('schocial_settings', []);
+        $apiKey = isset($settings["{$platform}_api_key"]) ?
+            $settings["{$platform}_api_key"] : '';
+
+        if (empty($apiKey)) {
+            return new WP_Error(
+                'missing_api_key',
+                sprintf(
+                    __('No API key configured for %s', 'schocial-scheduler'),
+                    $platform
+                )
+            );
+        }
+
+        $message = $post->post_title . "\n\n" . wp_trim_words(
+            $post->post_content, 30
+        );
         $link = get_permalink($postId);
 
-        switch ($platform) {
-        case 'facebook':
-            $this->_postToFacebook($message, $link);
-            break;
-        case 'twitter':
-            $this->_postToTwitter($message, $link);
-            break;
-        case 'linkedin':
-            $this->_postToLinkedin($message, $link);
-            break;
-        case 'instagram':
-            $this->_postToInstagram($message);
-            break;
+        try {
+            switch ($platform) {
+            case 'facebook':
+                return $this->_postToFacebook($message, $link, $apiKey);
+            case 'twitter':
+                return $this->_postToTwitter($message, $link, $apiKey);
+            case 'linkedin':
+                return $this->_postToLinkedin($message, $link, $apiKey);
+            case 'instagram':
+                return $this->_postToInstagram($message, $apiKey);
+            default:
+                return new WP_Error(
+                    'invalid_platform',
+                    __('Invalid social media platform', 'schocial-scheduler')
+                );
+            }
+        } catch (Exception $e) {
+            return new WP_Error(
+                'post_failed',
+                $e->getMessage()
+            );
+        }
+    }
+
+    /**
+     * Handle immediate post to social media
+     *
+     * @param WP_REST_Request $request The REST request object.
+     *
+     * @return WP_REST_Response|WP_Error The REST response or error.
+     */
+    public function handlePostNow($request)
+    {
+        try {
+            $platform = $request->get_param('platform');
+            $postId = $request->get_param('post_id');
+
+            error_log("Starting post to {$platform} for post {$postId}");
+
+            $post = get_post($postId);
+            if (!$post) {
+                error_log("Post {$postId} not found");
+                return new WP_Error(
+                    'post_not_found',
+                    __('Post not found', 'schocial-scheduler'),
+                    ['status' => 404]
+                );
+            }
+
+            $settings = get_option('schocial_settings', []);
+            error_log(
+                "Retrieved settings: " . wp_json_encode($settings)
+            );
+
+            $apiKey = $settings["{$platform}_api_key"] ?? '';
+            $pageId = $settings['facebook_page_id'] ?? '';
+
+            if ($platform === 'facebook' && (empty($apiKey) || empty($pageId))) {
+                error_log(
+                    "Missing Facebook credentials - API Key exists: " .
+                    (!empty($apiKey)) . ", Page ID exists: " . (!empty($pageId))
+                );
+                return new WP_Error(
+                    'missing_credentials',
+                    __('Missing Facebook credentials', 'schocial-scheduler'),
+                    ['status' => 400]
+                );
+            }
+
+            $message = $post->post_title . "\n\n" .
+                wp_trim_words($post->post_content, 30);
+            $link = get_permalink($postId);
+
+            error_log("Attempting to post to Facebook with Page ID: {$pageId}");
+
+            $url = "https://graph.facebook.com/v18.0/{$pageId}/feed";
+            $response = wp_remote_post(
+                $url, [
+                'body' => [
+                    'message' => $message,
+                    'link' => $link,
+                    'access_token' => $apiKey
+                ],
+                'timeout' => 30
+                ]
+            );
+
+            error_log("Facebook API Response: " . wp_json_encode($response));
+
+            if (is_wp_error($response)) {
+                error_log("WP Error: " . $response->get_error_message());
+                return $response;
+            }
+
+            $body = json_decode(wp_remote_retrieve_body($response), true);
+            error_log("Response body: " . wp_json_encode($body));
+
+            return rest_ensure_response(
+                [
+                'success' => true,
+                'message' => sprintf(
+                    __('Posted to %s', 'schocial-scheduler'),
+                    $platform
+                ),
+                'response' => $body
+                ]
+            );
+
+        } catch (Exception $e) {
+            error_log("Exception: " . $e->getMessage());
+            return new WP_Error(
+                'post_failed',
+                $e->getMessage(),
+                ['status' => 500]
+            );
         }
     }
 
@@ -510,15 +634,74 @@ class SchocialScheduler
      *
      * @param string $message The message to post.
      * @param string $link    The link to include in the post.
+     * @param string $apiKey  The API key for the given platform.
      *
      * @return void
      * @since  1.0.0
      *
      * @access private
      */
-    private function _postToFacebook($message, $link)
+    private function _postToFacebook($message, $link, $apiKey)
     {
-        // Implement Facebook API integration
+        $graphApiVersion = 'v21.0';
+        $pageId = get_option('schocial_facebook_page_id', '');
+
+        if (empty($pageId)) {
+            return new WP_Error(
+                'missing_page_id',
+                __('Facebook Page ID not configured', 'schocial-scheduler')
+            );
+        }
+
+        $url = "https://graph.facebook.com/{$graphApiVersion}/{$pageId}/feed";
+
+        error_log('Facebook API Request URL: ' . $url);
+        error_log(
+            'Facebook API Request Body: ' . wp_json_encode(
+                [
+                'message' => $message,
+                'link' => $link
+                ]
+            )
+        );
+
+        $response = wp_remote_post(
+            $url, [
+            'body' => [
+                'message' => $message,
+                'link' => $link,
+                'access_token' => $apiKey
+            ],
+            'timeout' => 30
+            ]
+        );
+
+        if (is_wp_error($response)) {
+            error_log('Facebook API Error: ' . $response->get_error_message());
+            return $response;
+        }
+
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+        error_log('Facebook API Response: ' . wp_json_encode($body));
+
+        if (!empty($body['error'])) {
+            error_log(
+                'Facebook API Error: ' . wp_json_encode($body['error'])
+            );
+            return new WP_Error(
+                'facebook_api_error',
+                $body['error']['message']
+            );
+        }
+
+        return [
+            'success' => true,
+            'platform' => 'facebook',
+            'post_id' => $body['id'] ?? null,
+            'message' =>
+                __('Post successfully shared to Facebook', 'schocial-scheduler'),
+            'response' => $body
+        ];
     }
 
     /**
