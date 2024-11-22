@@ -42,7 +42,7 @@ class SchocialSettings
      *
      * @var string
      */
-    private $_optons_key = 'schocial_settings';
+    private $_options_key = 'schocial_settings';
 
     /**
      * Initialize the class and set up hooks.
@@ -138,8 +138,8 @@ class SchocialSettings
     public function register_settings()
     {
         register_setting(
-            $this->_optons_key,
-            $this->_optons_key,
+            $this->_options_key,
+            $this->_options_key,
             array(
                 'type'         => 'object',
                 'show_in_rest' => array(
@@ -147,6 +147,9 @@ class SchocialSettings
                         'type'       => 'object',
                         'properties' => array(
                             'facebook_api_key'  => array(
+                                'type' => 'string',
+                            ),
+                            'facebook_page_id' => array(
                                 'type' => 'string',
                             ),
                             'twitter_api_key'   => array(
@@ -239,12 +242,15 @@ class SchocialSettings
     // phpcs:ignore
     public function get_settings()
     {
-        $settings = get_option($this->_optons_key, array());
+        $settings = get_option($this->_options_key, array());
         return rest_ensure_response(
             array(
                 'facebook_api_key'  =>
                     isset($settings['facebook_api_key']) ?
                         $settings['facebook_api_key'] : '',
+                'facebook_page_id' =>
+                    isset($settings['facebook_page_id']) ?
+                        $settings['facebook_page_id'] : '',
                 'twitter_api_key'   =>
                     isset($settings['twitter_api_key']) ?
                         $settings['twitter_api_key'] : '',
@@ -284,6 +290,7 @@ class SchocialSettings
                     $key,
                     array(
                         'facebook_api_key',
+                        'facebook_page_id',
                         'twitter_api_key',
                         'linkedin_api_key',
                         'instagram_api_key',
@@ -295,7 +302,7 @@ class SchocialSettings
             ARRAY_FILTER_USE_KEY
         );
 
-        update_option($this->_optons_key, $settings);
-        return rest_ensure_response(get_option($this->_optons_key, array()));
+        update_option($this->_options_key, $settings);
+        return rest_ensure_response(get_option($this->_options_key, array()));
     }
 }
