@@ -75,22 +75,33 @@ class SchocialSettings
 
         $plugin_dir = plugin_dir_path(dirname(__FILE__));
         $plugin_url = plugins_url('build/settings.js', dirname(__FILE__));
-        $asset_file = include $plugin_dir . 'build/settings.asset.php';
+        $asset_file_path = $plugin_dir . 'build/settings.asset.php';
+
+        // Check if asset file exists and load dependencies
+        $dependencies = [
+                'wp-components', 'wp-element', 'wp-api-fetch', 'wp-i18n', 'wp-data'
+        ];
+        $version = '1.0.0';
+
+        if (file_exists($asset_file_path)) {
+            $asset_file = include $asset_file_path;
+            if (is_array($asset_file)
+                && isset($asset_file['dependencies'])
+            ) {
+                $dependencies = array_merge(
+                    $asset_file['dependencies'], $dependencies
+                );
+            }
+            if (isset($asset_file['version'])) {
+                $version = $asset_file['version'];
+            }
+        }
 
         wp_enqueue_script(
             'schocial-settings',
             $plugin_url,
-            array_merge(
-                $asset_file['dependencies'],
-                array(
-                    'wp-components',
-                    'wp-element',
-                    'wp-api-fetch',
-                    'wp-i18n',
-                    'wp-data',
-                )
-            ),
-            $asset_file['version'],
+            array_unique($dependencies),
+            $version,
             true
         );
 
