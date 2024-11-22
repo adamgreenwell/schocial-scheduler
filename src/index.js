@@ -11,6 +11,7 @@ import {
 	FlexBlock,
 } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
+import PostNowButton from './components/PostNowButton';
 
 const SchocialSchedulerSidebar = () => {
 	const scheduleData = useSelect( select => {
@@ -41,6 +42,13 @@ const SchocialSchedulerSidebar = () => {
 
 		return { platforms, schedule };
 	}, [] );
+
+	const { getCurrentPostId } = useSelect(
+		select => ( {
+			getCurrentPostId: () => select( 'core/editor' ).getCurrentPostId(),
+		} ),
+		[]
+	);
 
 	const { editPost } = useDispatch( 'core/editor' );
 
@@ -106,15 +114,22 @@ const SchocialSchedulerSidebar = () => {
 									onChange={ enabled => togglePlatform( id, enabled ) }
 								/>
 								{ scheduleData.platforms[ id ] && (
-									<FlexBlock>
-										<DateTimePicker
-											currentDate={
-												scheduleData.schedule[ id ] ? new Date( scheduleData.schedule[ id ] ) : null
-											}
-											onChange={ date => updateSchedule( id, date ) }
-											is12Hour={ true }
-										/>
-									</FlexBlock>
+									<>
+										<FlexBlock>
+											<DateTimePicker
+												currentDate={
+													scheduleData.schedule[ id ]
+														? new Date( scheduleData.schedule[ id ] )
+														: null
+												}
+												onChange={ date => updateSchedule( id, date ) }
+												is12Hour={ true }
+											/>
+										</FlexBlock>
+										<FlexBlock>
+											<PostNowButton platform={ id } postId={ getCurrentPostId() } />
+										</FlexBlock>
+									</>
 								) }
 							</Flex>
 						</PanelRow>
