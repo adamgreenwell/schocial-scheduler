@@ -76,7 +76,7 @@
     "@wordpress/eslint-plugin": "^21.5.0",
     "@wordpress/jest-preset-default": "^10.0.0",
     "@wordpress/prettier-config": "^4.12.0",
-    "@wordpress/scripts": "^26.0.0",
+    "@wordpress/scripts": "^26.19.0",
     "archiver": "^5.3.1",
     "babel-jest": "^29.3.1",
     "cross-env": "^7.0.3",
@@ -116,7 +116,8 @@
     "packages-update": "wp-scripts packages-update",
     "make-pot": "wp i18n make-pot . languages/schocial-scheduler.pot",
     "prepare": "husky install",
-    "dist": "node scripts/build-dist.js"
+    "dist": "node scripts/build-dist.js",
+    "zip": "wp-scripts plugin-zip"
   },
   "browserslist": [
     "extends @wordpress/browserslist-config"
