@@ -24,3 +24,5 @@ Thumbs.db
 # Test coverage
 /coverage
 .phpunit.result.cache
+/composer.lock
+/package-lock.json
