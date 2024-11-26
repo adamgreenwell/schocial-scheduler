@@ -212,8 +212,14 @@ class SchocialSettings
                                 'type' => 'string',
                             ),
                             'linkedin_client_secret' => array(
-                                    'type' => 'string',
-                                ),
+                                'type' => 'string',
+                            ),
+                            'linkedin_access_token' => array(
+                                'type' => 'string',
+                            ),
+                            'linkedin_member_urn' => array(
+                                'type' => 'string',
+                            ),
                             'instagram_api_key' => array(
                                 'type' => 'string',
                             ),
@@ -472,73 +478,15 @@ class SchocialSettings
             );
     }
 
-    // Handle LinkedIn OAuth callback
-	// phpcs:ignore
-    public function handle_linkedin_callback($request)
-    {
-        try {
-            $code = $request->get_param('code');
-            $state = $request->get_param('state');
-
-            if (!wp_verify_nonce($state, 'linkedin_oauth')) {
-                throw new Exception('Invalid state parameter');
-            }
-
-            $settings = get_option('schocial_settings', []);
-            $clientId = $settings['linkedin_client_id'] ?? '';
-            $clientSecret = $settings['linkedin_client_secret'] ?? '';
-            $redirectUri = rest_url('schocial/v1/linkedin/callback');
-
-            $tokenResponse = wp_remote_post(
-                'https://www.linkedin.com/oauth/v2/accessToken',
-                [
-                    'body' => [
-                        'grant_type' => 'authorization_code',
-                        'code' => $code,
-                        'client_id' => $clientId,
-                        'client_secret' => $clientSecret,
-                        'redirect_uri' => $redirectUri
-                    ]
-                ]
-            );
-
-            if (is_wp_error($tokenResponse)) {
-                throw new Exception($tokenResponse->get_error_message());
-            }
-
-            $tokenBody = json_decode(wp_remote_retrieve_body($tokenResponse), true);
-
-            if (empty($tokenBody['access_token'])) {
-                throw new Exception('Failed to obtain access token');
-            }
-
-            // Store the access token
-            $settings['linkedin_access_token'] = $tokenBody['access_token'];
-            update_option('schocial_settings', $settings);
-
-            // Redirect back to settings page with success parameter
-            wp_redirect(
-                admin_url(
-                    'admin.php?page=schocial-settings&linkedin_success=1'
-                )
-            );
-            exit;
-
-        } catch (Exception $e) {
-            error_log('LinkedIn Callback Error: ' . $e->getMessage());
-            wp_redirect(
-                admin_url(
-                    'admin.php?page=schocial-settings&linkedin_error=' .
-                    urlencode($e->getMessage())
-                )
-            );
-            exit;
-        }
-    }
-
-	// phpcs:ignore
-    public function validate_linkedin_credentials($request)
-    {
+    /**
+     * Validate LinkedIn credentials
+     *
+     * @param WP_REST_Request $request The request object.
+     *
+     * @return WP_REST_Response|WP_Error The response or error.
+     */
+    // phpcs:ignore
+    public function validate_linkedin_credentials($request) {
         try {
             $settings = get_option('schocial_settings', []);
             $clientId = $settings['linkedin_client_id'] ?? '';
@@ -556,35 +504,253 @@ class SchocialSettings
                 );
             }
 
-            $authUrl
-                = 'https://www.linkedin.com/oauth/v2/authorization?' .
-                http_build_query(
-                    [
-                    'response_type' => 'code',
-                    'client_id' => $clientId,
-                    'redirect_uri' => $redirectUri,
-                    'state' => wp_create_nonce('linkedin_oauth'),
-                    'scope' => 'r_organization_social w_organization_social'
-                    ]
-                );
+            // Generate a random state parameter
+            $state = wp_generate_password(32, false);
+            set_transient(
+                'linkedin_oauth_state_' . $state,
+                true,
+                5 * MINUTE_IN_SECONDS
+            );
+
+            $authUrl = 'https://www.linkedin.com/oauth/v2/authorization?' .
+                    http_build_query(
+                        [
+                            'response_type' => 'code',
+                            'client_id' => $clientId,
+                            'redirect_uri' => $redirectUri,
+                            'state' => $state,
+                            'scope' => 'w_member_social openid profile email'
+                        ]
+                    );
+
+            error_log('Generated Auth URL: ' . $authUrl);
 
             return new WP_REST_Response(
                 [
-                    'success' => true,
-                    'authUrl' => $authUrl,
-                    'message' => __(
-                        'Please authorize the application',
-                        'schocial-scheduler'
-                    )
+                'success' => true,
+                'authUrl' => $authUrl,
+                'message' => __(
+                    'Please authorize the application',
+                    'schocial-scheduler'
+                )
                 ]
             );
 
         } catch (Exception $e) {
             error_log('LinkedIn Validation Exception: ' . $e->getMessage());
             return new WP_Error(
-                'validation_failed', $e->getMessage(),
+                'validation_failed',
+                $e->getMessage(),
                 ['status' => 400]
             );
+        }
+    }
+
+    /**
+     * Handle LinkedIn OAuth callback
+     *
+     * @param WP_REST_Request $request The REST request object.
+     *
+     * @return void
+     */
+    // phpcs:ignore
+    public function handle_linkedin_callback($request) {
+        try {
+            error_log(
+                'LinkedIn Callback Received. Request parameters: ' .
+                wp_json_encode($request->get_params())
+            );
+
+            $code = $request->get_param('code');
+            if (empty($code)) {
+                error_log('No authorization code received from LinkedIn');
+                throw new Exception(
+                    'No authorization code received from LinkedIn'
+                );
+            }
+
+            $state = $request->get_param('state');
+            if (empty($state)) {
+                error_log('No state parameter received from LinkedIn');
+                throw new Exception('No state parameter received');
+            }
+
+            // Verify state parameter using transient
+            $state_key = 'linkedin_oauth_state_' . $state;
+            $valid_state = get_transient($state_key);
+
+            if (!$valid_state) {
+                error_log('Invalid or expired state parameter received');
+                throw new Exception('Invalid or expired state parameter');
+            }
+
+            delete_transient($state_key);
+
+            $settings = get_option('schocial_settings', []);
+            $clientId = $settings['linkedin_client_id'] ?? '';
+            $clientSecret = $settings['linkedin_client_secret'] ?? '';
+            $redirectUri = rest_url('schocial/v1/linkedin/callback');
+
+            // Exchange code for access token
+            $tokenResponse = wp_remote_post(
+                'https://www.linkedin.com/oauth/v2/accessToken',
+                [
+                    'body' => [
+                        'grant_type' => 'authorization_code',
+                        'code' => $code,
+                        'client_id' => $clientId,
+                        'client_secret' => $clientSecret,
+                        'redirect_uri' => $redirectUri
+                    ]
+                ]
+            );
+
+            if (is_wp_error($tokenResponse)) {
+                error_log(
+                    'LinkedIn Token Error: ' .
+                    $tokenResponse->get_error_message()
+                );
+                throw new Exception($tokenResponse->get_error_message());
+            }
+
+            $tokenBody = json_decode(
+                wp_remote_retrieve_body($tokenResponse),
+                true
+            );
+            error_log(
+                'LinkedIn Token Response: ' . wp_json_encode($tokenBody)
+            );
+
+            if (empty($tokenBody['access_token'])) {
+                error_log('LinkedIn Token Error: Empty access token');
+                throw new Exception('Failed to obtain access token');
+            }
+
+            // Get user profile info
+            $profileResponse = wp_remote_get(
+                'https://api.linkedin.com/v2/userinfo',
+                [
+                    'headers' => [
+                        'Authorization' => 'Bearer ' . $tokenBody['access_token']
+                    ]
+                ]
+            );
+
+            if (is_wp_error($profileResponse)) {
+                error_log(
+                    'LinkedIn Profile Error: ' .
+                    $profileResponse->get_error_message()
+                );
+                throw new Exception($profileResponse->get_error_message());
+            }
+
+            $profileBody = json_decode(
+                wp_remote_retrieve_body($profileResponse),
+                true
+            );
+            error_log('LinkedIn Profile Response: ' . wp_json_encode($profileBody));
+
+            if (empty($profileBody['sub'])) {
+                error_log('LinkedIn Profile Error: Could not obtain member ID');
+                throw new Exception('Could not obtain LinkedIn member ID');
+            }
+
+            // Create the member URN
+            $memberUrn = 'urn:li:person:' . $profileBody['sub'];
+
+            // Make a test share
+            $testResponse = wp_remote_post(
+                'https://api.linkedin.com/v2/ugcPosts',
+                [
+                    'headers' => [
+                        'Authorization' => 'Bearer ' . $tokenBody['access_token'],
+                        'Content-Type' => 'application/json',
+                        'X-Restli-Protocol-Version' => '2.0.0'
+                    ],
+                    'body' => wp_json_encode(
+                        [
+                            'author' => $memberUrn,
+                            'lifecycleState' => 'PUBLISHED',
+                            'specificContent' => [
+                                'com.linkedin.ugc.ShareContent' => [
+                                    'shareCommentary' => [
+                                        'text' => 'Verifying WordPress connection'
+                                    ],
+                                    'shareMediaCategory' => 'NONE'
+                                ]
+                            ],
+                            'visibility' => [
+                                //phpcs:ignore
+                                'com.linkedin.ugc.MemberNetworkVisibility' => 'CONNECTIONS'
+                            ]
+                        ]
+                    )
+                ]
+            );
+
+            if (is_wp_error($testResponse)) {
+                error_log(
+                    'LinkedIn Test Post Error: ' .
+                    $testResponse->get_error_message()
+                );
+                throw new Exception($testResponse->get_error_message());
+            }
+
+            $testBody = json_decode(wp_remote_retrieve_body($testResponse), true);
+            $responseCode = wp_remote_retrieve_response_code($testResponse);
+
+            error_log('LinkedIn Test Post Response Code: ' . $responseCode);
+            error_log('LinkedIn Test Post Response: ' . wp_json_encode($testBody));
+
+            if ($responseCode === 201 || $responseCode === 200) {
+                // Store credentials
+                $settings['linkedin_access_token'] = $tokenBody['access_token'];
+                $settings['linkedin_member_urn'] = $memberUrn;
+                $settings['linkedin_token_expires']
+                    = time() + ($tokenBody['expires_in'] ?? 5184000);
+
+                // Update settings
+                $updated = update_option('schocial_settings', $settings);
+
+                if (!$updated) {
+                    throw new Exception('Failed to save LinkedIn credentials');
+                }
+
+                error_log('Successfully verified LinkedIn posting capabilities');
+                error_log('Successfully stored LinkedIn credentials');
+
+                // Add success message to the redirect URL
+                $redirect_url = add_query_arg(
+                    array(
+                        'page' => 'schocial-settings',
+                        'linkedin_success' => '1',
+                        'message' => urlencode('LinkedIn successfully connected!')
+                    ),
+                    admin_url('admin.php')
+                );
+
+                wp_redirect($redirect_url);
+                exit;
+            } else {
+                error_log(
+                    'LinkedIn Test Post Failed. Response: ' .
+                    wp_json_encode($testBody)
+                );
+                throw new Exception(
+                    'Failed to verify LinkedIn posting capabilities. Response: ' .
+                    wp_json_encode($testBody)
+                );
+            }
+
+        } catch (Exception $e) {
+            error_log('LinkedIn Callback Error: ' . $e->getMessage());
+            wp_redirect(
+                admin_url(
+                    //phpcs:ignore
+                    'admin.php?page=schocial-settings&linkedin_error=' . urlencode($e->getMessage())
+                )
+            );
+            exit;
         }
     }
 
@@ -660,14 +826,14 @@ class SchocialSettings
      */
 
     // phpcs:ignore
-    public function update_settings($request)
-    {
+    public function update_settings($request) {
         $settings = array_filter(
             $request->get_params(),
             function ($key) {
                 return in_array(
                     $key,
-                    array(// Facebook fields
+                    array(
+                        // Facebook fields
                         'facebook_api_key',
                         'facebook_page_id',
 
@@ -680,6 +846,8 @@ class SchocialSettings
                         // LinkedIn fields
                         'linkedin_client_id',
                         'linkedin_client_secret',
+                        'linkedin_access_token',
+                        'linkedin_member_urn',
 
                         // Instagram fields
                         'instagram_api_key',
@@ -770,6 +938,8 @@ class SchocialSettings
             'twitter_bearer_token',
             'linkedin_client_id',
             'linkedin_client_secret',
+            'linkedin_access_token',
+            'linkedin_member_urn',
             'instagram_api_key'
         );
 
