@@ -1,3 +1,5 @@
+import LinkedInTokenStatus from './LinkedInTokenStatus';
+
 const { useState, useEffect } = window.wp.element;
 
 const { createElement, Fragment } = window.wp.element;
@@ -444,6 +446,10 @@ const SettingsPage = () => {
 								} ),
 							type: 'password',
 							help: __( 'Your LinkedIn Application Client Secret' ),
+						} ),
+						createElement( LinkedInTokenStatus, {
+							key: 'linkedin-token-status',
+							tokenExpiresTimestamp: settings.linkedin_token_expires || null,
 						} ),
 						createElement(
 							Button,
