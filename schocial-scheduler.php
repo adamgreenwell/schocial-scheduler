@@ -61,6 +61,9 @@ class SchocialScheduler
      */
     private $_pluginUrl;
 
+    //phpcs:ignore
+    private $settings;
+
     /**
      * Initialize the plugin
      *
@@ -723,121 +726,109 @@ class SchocialScheduler
      *
      * @access private
      */
-    private function _postToLinkedin($message, $link, $apiKey)
-    {
+    // phpcs:ignore
+    private function _postToLinkedin($message, $link, $apiKey) {
         try {
             // Get settings
-            $settings     = get_option('schocial_settings', []);
-            $clientId     = $settings['linkedin_client_id'] ?? '';
-            $clientSecret = $settings['linkedin_client_secret'] ?? '';
+            $settings = get_option('schocial_settings', []);
+            $access_token = $settings['linkedin_access_token'] ?? '';
+            $member_urn = $settings['linkedin_member_urn'] ?? '';
 
-            if (empty($clientId) || empty($clientSecret)) {
+            if (empty($access_token) || empty($member_urn)) {
                 throw new Exception(
                     __(
-                        'LinkedIn client credentials not configured',
+                        //phpcs:ignore
+                        'LinkedIn credentials not configured. Please reconnect your LinkedIn account.',
                         'schocial-scheduler'
                     )
                 );
             }
 
-            // Exchange client credentials for access token
-            $tokenResponse = wp_remote_post(
-                'https://www.linkedin.com/oauth/rest/accessToken',
-                [
-                    'body'    => [
-                        'grant_type'    => 'client_credentials',
-                        'client_id'     => $clientId,
-                        'client_secret' => $clientSecret,
-                        'scope'         => 'w_member_social'
-                    ],
-                    'headers' => [
-                        'Content-Type' => 'application/x-www-form-urlencoded'
-                    ]
-                ]
-            );
-
-            if (is_wp_error($tokenResponse)) {
-                throw new Exception($tokenResponse->get_error_message());
-            }
-
-            $tokenBody = json_decode(wp_remote_retrieve_body($tokenResponse), true);
-            if (empty($tokenBody['access_token'])) {
+            // Check if token might be expired
+            $expires
+                = $settings['linkedin_token_expires'] ?? 0;
+            if ($expires && time() > $expires - 86400) {
+                // Check if expired or expires in next 24 hours
                 throw new Exception(
                     __(
-                        'Failed to obtain LinkedIn access token',
+                        //phpcs:ignore
+                        'LinkedIn access token is expired or will expire soon. Please reconnect your account.',
                         'schocial-scheduler'
                     )
                 );
             }
 
             // Prepare the post content
-            $postData = [
-                'author'          => 'urn:li:person:me',
-                'lifecycleState'  => 'PUBLISHED',
+            $post_data = [
+                'author' => $member_urn,
+                'lifecycleState' => 'PUBLISHED',
                 'specificContent' => [
                     'com.linkedin.ugc.ShareContent' => [
-                        'shareCommentary'    => [
+                        'shareCommentary' => [
                             'text' => $message
                         ],
                         'shareMediaCategory' => 'ARTICLE',
-                        'media'              => [
+                        'media' => [
                             [
-                                'status'      => 'READY',
+                                'status' => 'READY',
                                 'originalUrl' => $link
                             ]
                         ]
                     ]
                 ],
-                'visibility'      => [
+                'visibility' => [
                     'com.linkedin.ugc.MemberNetworkVisibility' => 'PUBLIC'
                 ]
             ];
 
-            // Create the post
-            $postResponse = wp_remote_post(
+            error_log('LinkedIn Post Request: ' . wp_json_encode($post_data));
+
+            $response = wp_remote_post(
                 'https://api.linkedin.com/v2/ugcPosts',
                 [
                     'headers' => [
-                        'Authorization'             =>
-                            'Bearer ' . $tokenBody['access_token'],
-                        'Content-Type'              => 'application/json',
+                        'Authorization' => 'Bearer ' . $access_token,
+                        'Content-Type' => 'application/json',
                         'X-Restli-Protocol-Version' => '2.0.0'
                     ],
-                    'body'    => wp_json_encode($postData)
+                    'body' => wp_json_encode($post_data)
                 ]
             );
 
-            if (is_wp_error($postResponse)) {
-                throw new Exception($postResponse->get_error_message());
+            if (is_wp_error($response)) {
+                error_log('LinkedIn API Error: ' . $response->get_error_message());
+                throw new Exception($response->get_error_message());
             }
 
-            $responseBody = json_decode(
-                wp_remote_retrieve_body($postResponse),
-                true
-            );
+            $response_code = wp_remote_retrieve_response_code($response);
+            $response_body = json_decode(wp_remote_retrieve_body($response), true);
 
-            if (! empty($responseBody['id'])) {
-                return [
-                    'success' => true,
-                    'message' => __(
-                        'Successfully posted to LinkedIn',
-                        'schocial-scheduler'
-                    ),
-                    'post_id' => $responseBody['id']
-                ];
-            }
+            error_log('LinkedIn API Response Code: ' . $response_code);
+            error_log('LinkedIn API Response: ' . wp_json_encode($response_body));
 
-            throw new Exception(
-                isset($responseBody['message'])
-                    ? $responseBody['message']
-                    : __(
+            if ($response_code !== 201) {
+                throw new Exception(
+                    $response_body['message'] ??
+                    __(
                         'Unknown error occurred while posting to LinkedIn',
                         'schocial-scheduler'
                     )
-            );
+                );
+            }
+
+            return [
+                'success' => true,
+                'platform' => 'linkedin',
+                'post_id' => $response_body['id'] ?? null,
+                'message' => __(
+                    'Successfully posted to LinkedIn',
+                    'schocial-scheduler'
+                ),
+                'response' => $response_body
+            ];
+
         } catch (Exception $e) {
             error_log('LinkedIn Post Error: ' . $e->getMessage());
-
             return new WP_Error(
                 'linkedin_post_failed',
                 $e->getMessage()
@@ -929,128 +920,102 @@ class SchocialScheduler
                 break;
 
             case 'linkedin':
-                $clientId     = $settings['linkedin_client_id'] ?? '';
-                $clientSecret = $settings['linkedin_client_secret'] ?? '';
+                $accessToken = $settings['linkedin_access_token'] ?? '';
+                $memberUrn = $settings['linkedin_member_urn'] ?? '';
 
-                if (empty($clientId) || empty($clientSecret)) {
-                    error_log("Missing LinkedIn credentials");
-
+                if (empty($accessToken) || empty($memberUrn)) {
+                    error_log(
+                        "Missing LinkedIn credentials - Access Token exists: " .
+                        //phpcs:ignore
+                        (!empty($accessToken)) . ", Member URN exists: " . (!empty($memberUrn))
+                    );
                     return new WP_Error(
                         'missing_credentials',
                         __(
-                            'Missing LinkedIn client credentials',
+                            //phpcs:ignore
+                            'Missing LinkedIn credentials. Please reconnect your LinkedIn account.',
                             'schocial-scheduler'
                         ),
-                        [ 'status' => 400 ]
+                        ['status' => 400]
                     );
                 }
 
-                $tokenUrl      = 'https://www.linkedin.com/oauth/rest/accessToken';
-                $tokenResponse = wp_remote_post(
-                    $tokenUrl,
-                    [
-                    'headers' => [
-                        'Content-Type'  => 'application/x-www-form-urlencoded',
-                        'Authorization' =>
-                            'Basic ' . base64_encode($clientId . ':' . $clientSecret)
-                    ],
-                    'body'    => http_build_query(
-                        [
-                            'grant_type' => 'client_credentials',
-                            'scope'      => 'r_liteprofile w_member_social'
-                        ]
-                    )
-                    ]
-                );
-
                 error_log(
-                    "Token Request URL: " . $tokenUrl
+                    "Attempting to post to LinkedIn with member URN: {$memberUrn}"
                 );
-                error_log(
-                    "Token Request Headers: " .
-                    wp_json_encode(wp_remote_retrieve_headers($tokenResponse))
-                );
-                error_log(
-                    "Token Response Status: " .
-                      wp_remote_retrieve_response_code($tokenResponse)
-                );
-                error_log(
-                    "Token Response Body: " .
-                    wp_remote_retrieve_body($tokenResponse)
-                );
-
-                if (is_wp_error($tokenResponse)) {
-                    error_log(
-                        "LinkedIn Token Error: " .
-                        $tokenResponse->get_error_message()
-                    );
-
-                    return $tokenResponse;
-                }
-
-                if (is_wp_error($tokenResponse)) {
-                    error_log(
-                        "LinkedIn Token Error: " .
-                        $tokenResponse->get_error_message()
-                    );
-
-                    return $tokenResponse;
-                }
-
-                $tokenBody = json_decode(
-                    wp_remote_retrieve_body($tokenResponse),
-                    true
-                );
-                if (empty($tokenBody['access_token'])) {
-                    error_log(
-                        "LinkedIn Token Error: " .
-                        wp_json_encode($tokenBody)
-                    );
-
-                    return new WP_Error(
-                        'token_error',
-                        __(
-                            'Failed to obtain LinkedIn access token',
-                            'schocial-scheduler'
-                        ),
-                        [ 'status' => 400 ]
-                    );
-                }
+                $url = 'https://api.linkedin.com/v2/ugcPosts';
 
                 $payload = [
-                'author'          => 'urn:li:person:me',
-                'specificContent' => [
-                    'com.linkedin.ugc.ShareContent' => [
-                        'shareCommentary'    => [
-                            'text' => $message
-                        ],
-                        'shareMediaCategory' => 'ARTICLE',
-                        'media'              => [
-                            [
-                                'status'      => 'READY',
-                                'originalUrl' => $link
+                    'author' => $memberUrn,
+                    'lifecycleState' => 'PUBLISHED',
+                    'specificContent' => [
+                        'com.linkedin.ugc.ShareContent' => [
+                            'shareCommentary' => [
+                                'text' => $message
+                            ],
+                            'shareMediaCategory' => 'ARTICLE',
+                            'media' => [
+                                [
+                                    'status' => 'READY',
+                                    'originalUrl' => $link
+                                ]
                             ]
                         ]
+                    ],
+                    'visibility' => [
+                        'com.linkedin.ugc.MemberNetworkVisibility' => 'PUBLIC'
                     ]
-                ],
-                'visibility'      => [
-                    'com.linkedin.ugc.MemberNetworkVisibility' => 'PUBLIC'
-                ]
                 ];
+
+                error_log(
+                    "Attempting to post to LinkedIn with payload: " .
+                    wp_json_encode($payload)
+                );
 
                 $response = wp_remote_post(
                     $url,
                     [
-                    'headers' => [
-                        'Authorization'             =>
-                            'Bearer ' . $tokenBody['access_token'],
-                        'Content-Type'              => 'application/json',
-                        'X-Restli-Protocol-Version' => '2.0.0'
-                    ],
-                    'body'    => wp_json_encode($payload),
-                    'timeout' => 30
+                        'headers' => [
+                            'Authorization' => 'Bearer ' . $accessToken,
+                            'Content-Type' => 'application/json',
+                            'X-Restli-Protocol-Version' => '2.0.0'
+                        ],
+                        'body' => wp_json_encode($payload)
                     ]
                 );
+
+                if (is_wp_error($response)) {
+                    error_log(
+                        "LinkedIn API Error: " .
+                        $response->get_error_message()
+                    );
+                    return $response;
+                }
+
+                $responseBody = json_decode(
+                    wp_remote_retrieve_body($response),
+                    true
+                );
+                $responseCode = wp_remote_retrieve_response_code($response);
+
+                error_log(
+                    "LinkedIn API Response Code: " .
+                    $responseCode
+                );
+                error_log(
+                    "LinkedIn API Response Body: " .
+                    wp_json_encode($responseBody)
+                );
+
+                if ($responseCode !== 201) {
+                    $errorMessage
+                        = $responseBody['message'] ?? 'Unknown error occurred';
+                    return new WP_Error(
+                        'linkedin_post_failed',
+                        $errorMessage,
+                        ['status' => $responseCode]
+                    );
+                }
                 break;
 
             default:
