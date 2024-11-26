@@ -1,22 +1,17 @@
 import { registerPlugin } from '@wordpress/plugins';
 import { PluginSidebar, PluginSidebarMoreMenuItem } from '@wordpress/editor';
 import { useSelect, useDispatch } from '@wordpress/data';
-import {
-	DateTimePicker,
-	PanelBody,
-	PanelRow,
-	Notice,
-	ToggleControl,
-	Flex,
-	FlexBlock,
-} from '@wordpress/components';
+import { Notice } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
-import PostNowButton from './components/PostNowButton';
+import FacebookPlatform from './components/platforms/FacebookPlatform';
+import TwitterPlatform from './components/platforms/TwitterPlatform';
+import LinkedInPlatform from './components/platforms/LinkedInPlatform';
+import InstagramPlatform from './components/platforms/InstagramPlatform';
 
 const SchocialSchedulerSidebar = () => {
 	const scheduleData = useSelect( select => {
 		if ( ! select( 'core/editor' ) ) {
-			console.log( 'core/editor store not found' ); // eslint-disable-line no-console
+			console.log( 'core/editor store not found' );
 			return {
 				platforms: {},
 				schedule: {},
@@ -25,22 +20,20 @@ const SchocialSchedulerSidebar = () => {
 
 		const meta = select( 'core/editor' ).getEditedPostAttribute( 'meta' ) || {};
 
-		// Ensure we have objects even if meta is undefined
-		const platforms = meta._schocial_platforms || {
-			facebook: false,
-			twitter: false,
-			linkedin: false,
-			instagram: false,
+		return {
+			platforms: meta._schocial_platforms || {
+				facebook: false,
+				twitter: false,
+				linkedin: false,
+				instagram: false,
+			},
+			schedule: meta._schocial_schedule || {
+				facebook: null,
+				twitter: null,
+				linkedin: null,
+				instagram: null,
+			},
 		};
-
-		const schedule = meta._schocial_schedule || {
-			facebook: null,
-			twitter: null,
-			linkedin: null,
-			instagram: null,
-		};
-
-		return { platforms, schedule };
 	}, [] );
 
 	const { getCurrentPostId } = useSelect(
@@ -72,7 +65,6 @@ const SchocialSchedulerSidebar = () => {
 			[ platform ]: enabled,
 		};
 
-		// If disabling, set schedule to null for this platform
 		const newSchedule = {
 			...scheduleData.schedule,
 			[ platform ]: enabled ? scheduleData.schedule[ platform ] : null,
@@ -86,12 +78,7 @@ const SchocialSchedulerSidebar = () => {
 		} );
 	};
 
-	const platforms = [
-		{ id: 'facebook', label: 'Facebook' },
-		{ id: 'twitter', label: 'X (Twitter)' },
-		{ id: 'linkedin', label: 'LinkedIn' },
-		{ id: 'instagram', label: 'Instagram' },
-	];
+	const postId = getCurrentPostId();
 
 	return (
 		<>
@@ -104,44 +91,47 @@ const SchocialSchedulerSidebar = () => {
 					{ __( 'Configure your social media schedule' ) }
 				</Notice>
 
-				{ platforms.map( ( { id, label } ) => (
-					<PanelBody key={ id } title={ label } initialOpen={ id === 'facebook' }>
-						<PanelRow>
-							<Flex direction="column" gap={ 4 }>
-								<ToggleControl
-									label={ `Enable ${ label } sharing` }
-									checked={ Boolean( scheduleData.platforms[ id ] ) }
-									onChange={ enabled => togglePlatform( id, enabled ) }
-								/>
-								{ scheduleData.platforms[ id ] && (
-									<>
-										<FlexBlock>
-											<DateTimePicker
-												currentDate={
-													scheduleData.schedule[ id ]
-														? new Date( scheduleData.schedule[ id ] )
-														: null
-												}
-												onChange={ date => updateSchedule( id, date ) }
-												is12Hour={ true }
-											/>
-										</FlexBlock>
-										<FlexBlock>
-											<PostNowButton platform={ id } postId={ getCurrentPostId() } />
-										</FlexBlock>
-									</>
-								) }
-							</Flex>
-						</PanelRow>
-					</PanelBody>
-				) ) }
+				<FacebookPlatform
+					enabled={ scheduleData.platforms.facebook }
+					schedule={ scheduleData.schedule.facebook }
+					onToggle={ enabled => togglePlatform( 'facebook', enabled ) }
+					onScheduleChange={ date => updateSchedule( 'facebook', date ) }
+					postId={ postId }
+				/>
+
+				<TwitterPlatform
+					enabled={ scheduleData.platforms.twitter }
+					schedule={ scheduleData.schedule.twitter }
+					onToggle={ enabled => togglePlatform( 'twitter', enabled ) }
+					onScheduleChange={ date => updateSchedule( 'twitter', date ) }
+					postId={ postId }
+				/>
+
+				<LinkedInPlatform
+					enabled={ scheduleData.platforms.linkedin }
+					schedule={ scheduleData.schedule.linkedin }
+					onToggle={ enabled => togglePlatform( 'linkedin', enabled ) }
+					onScheduleChange={ date => updateSchedule( 'linkedin', date ) }
+					postId={ postId }
+				/>
+
+				<InstagramPlatform
+					enabled={ scheduleData.platforms.instagram }
+					schedule={ scheduleData.schedule.instagram }
+					onToggle={ enabled => togglePlatform( 'instagram', enabled ) }
+					onScheduleChange={ date => updateSchedule( 'instagram', date ) }
+					postId={ postId }
+				/>
 			</PluginSidebar>
+
 			<PluginSidebarMoreMenuItem target="schocial-scheduler">
 				{ __( 'Schocial Scheduler' ) }
 			</PluginSidebarMoreMenuItem>
 		</>
 	);
 };
+
+export default SchocialSchedulerSidebar;
 
 // Make sure the plugin is registered after DOM is ready
 window.addEventListener( 'DOMContentLoaded', () => {
