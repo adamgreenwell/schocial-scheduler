@@ -220,6 +220,9 @@ class SchocialSettings
                             'linkedin_member_urn' => array(
                                 'type' => 'string',
                             ),
+                            'linkedin_token_expires' => array(
+                                'type' => 'integer'
+                            ),
                             'instagram_api_key' => array(
                                 'type' => 'string',
                             ),
@@ -388,7 +391,7 @@ class SchocialSettings
      * @return WP_REST_Response|WP_Error The response or error.
      */
 
-	// phpcs:ignore
+	//phpcs:ignore
     public function validate_twitter_credentials($request)
     {
         try {
@@ -765,14 +768,14 @@ class SchocialSettings
     {
         $settings = get_option($this->_options_key, array());
         return rest_ensure_response(
-            array(// Facebook settings
+            array(
+                // Facebook settings
                 'facebook_api_key' =>
                     isset($settings['facebook_api_key']) ?
                         $settings['facebook_api_key'] : '',
                 'facebook_page_id' =>
                     isset($settings['facebook_page_id']) ?
                         $settings['facebook_page_id'] : '',
-
                 // Twitter settings
                 'twitter_api_key' =>
                     isset($settings['twitter_api_key']) ?
@@ -792,18 +795,18 @@ class SchocialSettings
                             'include_featured_image' => false,
                             'thread_length' => 280
                     ),
-
                 // LinkedIn settings
                 'linkedin_client_id' =>
                     $settings['linkedin_client_id'] ?? '',
                 'linkedin_client_secret' =>
                     $settings['linkedin_client_secret'] ?? '',
-
+                'linkedin_token_expires' =>
+                    isset($settings['linkedin_token_expires']) ?
+                    intval($settings['linkedin_token_expires']) : null,
                 // Instagram settings
                 'instagram_api_key' =>
                     isset($settings['instagram_api_key']) ?
                         $settings['instagram_api_key'] : '',
-
                 // Platform enable/disable settings
                 'enabled_platforms' =>
                     isset($settings['enabled_platforms']) ?
